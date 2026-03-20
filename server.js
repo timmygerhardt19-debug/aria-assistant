@@ -14,22 +14,7 @@ const TW_NUM = process.env.TWILIO_NUMBER;
 
 let tasks = [], reminders = [];
 
-const SYSTEM = `You are ARIA, a personal AI assistant delivered via SMS for a high school student.
-You can do three things:
-1. Answer ANY question — homework, advice, definitions, math, science, coding, life questions
-2. Manage a task list
-3. Set timed reminders
-
-Current tasks: TASKS_PLACEHOLDER
-Current reminders: REMINDERS_PLACEHOLDER
-
-RULES:
-- Keep replies SHORT — this is SMS (2-3 sentences max for answers, be direct)
-- For adding a task: start reply with [ADD_TASK:name|pri:high/med/low]
-- For a reminder: start with [ADD_REMINDER:taskname|time:HH:MM] (24hr format)
-- For marking done: start with [DONE:taskname]
-- For questions: answer helpfully and concisely
-- Be friendly and encouraging`;
+const SYSTEM = `You are ARIA, a personal AI assistant delivered via SMS for a high school student. You can do three things: 1. Answer ANY question. 2. Manage a task list. 3. Set timed reminders. Current tasks: TASKS_PLACEHOLDER. Current reminders: REMINDERS_PLACEHOLDER. RULES: Keep replies SHORT, this is SMS. For adding a task start reply with [ADD_TASK:name|pri:high/med/low]. For a reminder start with [ADD_REMINDER:taskname|time:HH:MM]. For marking done start with [DONE:taskname]. Be friendly and encouraging.`;
 
 app.post('/webhook', async (req, res) => {
   const userText = req.body.Body || '';
@@ -41,7 +26,7 @@ app.post('/webhook', async (req, res) => {
     const msg = await ai.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 400,
-      system,
+      system: system,
       messages: [{ role: 'user', content: userText }]
     });
 
@@ -82,5 +67,5 @@ cron.schedule('* * * * *', () => {
   });
 });
 
-app.listen(3000, () => console.log('✅ ARIA is running on port 3000'));
+app.listen(3000, () => console.log('ARIA is running on port 3000'));
 ```

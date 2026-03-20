@@ -3,37 +3,27 @@ const express = require('express');
 const twilio = require('twilio');
 const Anthropic = require('@anthropic-ai/sdk');
 const cron = require('node-cron');
-
 const app = express();
 app.use(express.urlencoded({ extended: true }));
-
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const tw = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 const MY_NUM = process.env.YOUR_PHONE;
 const TW_NUM = process.env.TWILIO_NUMBER;
-
-let tasks = [], reminders = [];
-
-const SYSTEM = `You are ARIA, a personal AI assistant delivered via SMS for a high school student. You can do three things: 1. Answer ANY question. 2. Manage a task list. 3. Set timed reminders. Current tasks: TASKS_PLACEHOLDER. Current reminders: REMINDERS_PLACEHOLDER. RULES: Keep replies SHORT, this is SMS. For adding a task start reply with [ADD_TASK:name|pri:high/med/low]. For a reminder start with [ADD_REMINDER:taskname|time:HH:MM]. For marking done start with [DONE:taskname]. Be friendly and encouraging.`;
-
+let tasks = [];
+let reminders = [];
 app.post('/webhook', async (req, res) => {
   const userText = req.body.Body || '';
-  const system = SYSTEM
-    .replace('TASKS_PLACEHOLDER', JSON.stringify(tasks))
-    .replace('REMINDERS_PLACEHOLDER', JSON.stringify(reminders));
-
+  const system = 'You are ARIA, a personal AI assistant via SMS. Tasks: ' + JSON.stringify(tasks) + ' Reminders: ' + JSON.stringify(reminders) + ' Rules: Keep replies short, this is SMS. To add a task write [ADD_TASK:name|pri:high/med/low] at the start. To add a reminder write [ADD_REMINDER:taskname|time:HH:MM] at the start. To mark done write [DONE:taskname] at the start. Answer any question helpfully and concisely. Be friendly.';
   try {
-    const msg = await ai.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 400,
-      system: system,
-      messages: [{ role: 'user', content: userText }]
-    });
-
+    const msg = await ai.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: system, messages: [{ role: 'user', content: userText }] });
     const reply = msg.content[0].text;
-    parseActions(reply);
+    const taskMatch = reply.match(/\[ADD_TASK:([^|]+)\|pri:(high|med|low)\]/i);
+    if (taskMatch) tasks.push({ name: taskMatch[1].trim(), pri: taskMatch[2], done: false });
+    const remMatch = reply.match(/\[ADD_REMINDER:([^|]+)\|time:(\d{1,2}:\d{2})\]/i);
+    if (remMatch) reminders.push({ task: remMatch[1].trim(), time: remMatch[2], sent: false });
+    const doneMatch = reply.match(/\[DONE:([^\]]+)\]/i);
+    if (doneMatch) tasks.forEach(function(t) { if (t.name.toLowerCase().includes(doneMatch[1].toLowerCase())) t.done = true; });
     const clean = reply.replace(/\[.*?\]/g, '').trim();
-
     const twiml = new twilio.twiml.MessagingResponse();
     twiml.message(clean);
     res.type('text/xml').send(twiml.toString());
@@ -43,30 +33,14 @@ app.post('/webhook', async (req, res) => {
     res.type('text/xml').send(twiml.toString());
   }
 });
-
-function parseActions(text) {
-  const task = text.match(/\[ADD_TASK:([^|]+)\|pri:(high|med|low)\]/i);
-  if (task) tasks.push({ name: task[1].trim(), pri: task[2], done: false });
-
-  const rem = text.match(/\[ADD_REMINDER:([^|]+)\|time:(\d{1,2}:\d{2})\]/i);
-  if (rem) reminders.push({ task: rem[1].trim(), time: rem[2], sent: false });
-
-  const done = text.match(/\[DONE:([^\]]+)\]/i);
-  if (done) {
-    const n = done[1].toLowerCase();
-    tasks.forEach(t => { if (t.name.toLowerCase().includes(n)) t.done = true; });
-  }
-}
-
-cron.schedule('* * * * *', () => {
+cron.schedule('* * * * *', function() {
   const now = new Date();
-  const hhmm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  reminders.filter(r => r.time === hhmm && !r.sent).forEach(r => {
-    tw.messages.create({ body: '⏰ ARIA: ' + r.task, from: TW_NUM, to: MY_NUM });
+  const hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  reminders.filter(function(r) { return r.time === hhmm && !r.sent; }).forEach(function(r) {
+    tw.messages.create({ body: 'ARIA Reminder: ' + r.task, from: TW_NUM, to: MY_NUM });
     r.sent = true;
   });
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('ARIA is running on port ' + PORT));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, function() { console.log('ARIA is running on port ' + PORT); });
 ```
